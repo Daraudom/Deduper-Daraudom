@@ -163,7 +163,7 @@ Expected: 12
 ```python
 def five_prime_pos(sam_record: str):
 	"""
-	Takes a single sam_record and return the 5' starting position. This function calls the adj_soft_clip() and right_pos(). 
+	Takes a single sam_record and return the 5' starting position. This function calls the adj_soft_clip() and right_pos(). If no soft clip, just call right_pos!
 	"""
 # Example for + strand with no soft-clipping
 Input: QNAME 100 7 123456 36 71M * 0 0 ACTGTS...TGS ...
