@@ -1,0 +1,6 @@
+*.log
+*.sam
+*.txt
+
+Unit_Tests/*
+
