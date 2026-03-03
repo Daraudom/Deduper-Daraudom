@@ -1,66 +1,144 @@
-# Deduper
+# Deduper 🧬  
+UMI-Aware PCR Duplicate Removal for Sorted SAM Files (Single-End)
+Deduper is a Python command-line tool that removes PCR duplicates from a coordinate-sorted SAM file using Unique Molecular Identifiers (UMIs).
 
-## Part 1
-Use this repo template to create your own Deduper repo - you should do all your work in your own repository. Please name it `Deduper-<github-user-name>`.
+A read is considered unique based on the following profile:
+(UMI, Chromosome, Strand, Corrected 5′ Position)
+Only the first occurrence of each unique profile is retained. All subsequent duplicates are discarded.
 
-Write up a strategy for writing a Reference Based PCR Duplicate Removal tool. That is, given a sorted sam file of uniquely mapped reads, remove all PCR duplicates (retain only a single copy of each read). Develop a strategy that avoids loading everything into memory. You should not write any code for this portion of the assignment. Be sure to:
-- Define the problem
-- Write examples:
-    - Include a properly formated sorted input sam file
-    - Include a properly formated expected output sam file
-- Develop your algorithm using pseudocode
-- Determine high level functions
-    - Description
-    - Function headers
-    - Test examples (for individual functions)
-    - Return statement
-    
-For this portion of the assignment, you should design your algorithm for single-end data, with 96 UMIs. UMI information will be in the QNAME, like so: ```NS500451:154:HWKTMBGXX:1:11101:15364:1139:GAACAGGT```. Discard any UMIs with errors (or think about how you might error correct, if you're feeling ambitious).
 
-## Part 2
-An important part of writing code is reviewing code - both your own and other's. In this portion of the assignment, you will be assigned 3 students' pseudocode algorithms to review. Be sure to evaluate the following points:
-- Does the proposed algorithm make sense to you? Can you follow the logic?
-- Does the algorithm do everything it's supposed to do? (see part 1)
-- Are proposed functions reasonable? Are they "standalone" pieces of code?
+## Overview
 
-You can find your assigned reviewees on Canvas. You can find your fellow students' repositories at 
+PCR amplification can introduce duplicate reads that inflate downstream analyses. Deduper removes these duplicates using UMI-aware logic and strand-aware 5′ coordinate correction derived from the CIGAR string.
+
+The program:
+- Reads a sorted SAM file
+- Extracts UMIs from read names
+- Validates UMIs against a whitelist
+- Determines strand using the SAM FLAG field
+- Corrects the 5′ mapping position using CIGAR operations
+- Writes a deduplicated SAM output file
+- Generates a summary statistics report (`report.txt`)
+
+## Requirements
+
+- Python 3.9+
+- NumPy
+
+Install NumPy if needed:
+
+conda install numpy
+
+
+## Input Requirements
+
+### 1. Sorted SAM File
+
+The input SAM file must be sorted by chromosome and position.
+
+Example:
 ```
-github.com/<user>/Deduper-<github-user-name>
+samtools sort -O SAM input.sam -o input.sorted.sam
 ```
-Be sure to leave comments on their repositories by creating issues or by commenting on the pull request.
 
-## Part 3
-Write your deduper function!
+### 2. Single-End Reads
 
-Given a SAM file of uniquely mapped reads, and a text file containing the known UMIs, remove all PCR duplicates (retain only a single copy of each read). Remember:
-- Your Python code can assume a sorted sam file (you *might* need to use `samtools sort` outside of your Python script)
-- Account for: 
-    - all possible CIGAR strings (including adjusting for soft clipping, etc.)
-    - Strand
-    - Single-end reads
-    - Known UMIs
-- Considerations:
-    - Millions of reads – avoid loading everything into memory!
-    - Be sure to utilize functions appropriately
-    - Appropriately comment code and include doc strings
-- **CHALLENGE**: In a **separate branch**, implement options for
-    - Single-end vs paired-end
-    - Known UMIs vs randomers
-    - Error correction of known UMIs
-    - Choice of duplicate written to file
-    
-You MUST:
-- Write Python 3.12 compatible code
-- Include the following argparse options
-    - ```-f```, ```--file```: designates absolute file path to sorted sam file
-    - ```-o```, ```--outfile```: designates absolute file path to deduplicated sam file
-    - ```-u```, ```--umi```: designates file containing the list of UMIs
-    - ```-h```, ```--help```: prints a USEFUL help message (see argparse docs)
-        - That is, your code must be able to run (in a single step) if given a command in the format:
-          ```
-          ./<your_last_name>_deduper.py -u STL96.txt -f <in.sam> -o <out.sam>
-          ```
-- Output the first read encountered if duplicates are found
-- Output a properly formatted SAM file
-- Name your python script ```<your_last_name>_deduper.py``` and place it in the top level of your repo (that is, not inside a folder)
+This script is designed for single-end sequencing data.
 
+### 3. UMI Format
+
+UMIs must appear at the end of the QNAME field, separated by a colon `:`.
+```
+Example:
+
+READ123:ATCG
+
+Extracted UMI → ATCG
+```
+
+### 4. UMI Whitelist File
+
+Provide a text file containing valid UMIs (one per line).
+
+Example:
+
+ATCG
+GGTA
+CCTA
+...
+
+Reads containing UMIs not present in this file are ignored.
+
+
+## Usage
+```
+./deduper.py -f input.sorted.sam -u umi_list.txt -o deduped.sam
+```
+
+### Arguments
+
+- `-f / --file`   (required)  Input sorted SAM file
+- `-u / --umi`    (required)  File containing valid UMIs
+- `-o / --output` (optional)  Output SAM filename (default: deduper_output)
+
+
+## How Duplicate Detection Works
+
+For each non-header SAM record:
+
+1. Parse:
+   - QNAME
+   - FLAG
+   - RNAME (chromosome)
+   - POS
+   - CIGAR
+
+2. Extract:
+   - UMI from QNAME (substring after last `:`)
+   - Strand from FLAG  
+     + if bit 16 not set  
+     - if bit 16 is set  
+
+3. Compute corrected 5′ position:
+   - On + strand → adjust for leading soft clipping
+   - On - strand → compute 5′ using alignment span derived from CIGAR
+
+4. Construct unique key:
+
+(UMI, chromosome, strand, corrected_5prime_position)
+
+5. If key already exists → duplicate (discard)  
+   If new → write read to output and store key
+
+
+## Output Files
+
+### Deduplicated SAM File
+- All header lines are preserved
+- Only unique reads are retained
+
+### report.txt
+
+Contains:
+- Total number of reads processed
+- Total duplicated reads removed
+- Total unique reads retained
+- Per-chromosome unique read counts
+
+Example:
+
+Deduper Report
+Total Number of Reads: 500000
+Total Number of Duplicated Reads: 120000
+Total Number of Unique Reads: 380000
+chr1: 90000
+chr2: 85000
+
+
+## Limitations
+
+- Requires coordinate-sorted SAM input
+- Designed for single-end reads
+- Assumes UMI appears at end of QNAME
+- Does not support paired-end deduplication
+- Memory usage depends on number of unique read profiles per chromosome
